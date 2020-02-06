@@ -91,6 +91,7 @@ Options:
   -P <arg>... --  Give the argv when preprocessing. '{i}' becomes the input. The
                   default is '<cc> <flags> -E {i}'.
   -h              Display this help.
+This project is hosted at https://github.com/TurkeyMcMac/jdibs
 EOT
 				exit 0;
 			} else {
