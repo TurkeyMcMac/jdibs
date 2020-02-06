@@ -223,6 +223,10 @@ sub grep_escape {
 	return $str;
 }
 
+sub dep_argv {
+	return ('/bin/sh', '-c', '"$@" 2>/dev/null | grep -Eq "$0"', @_);
+}
+
 sub start_dep_check {
 	my ($files, $pids, @deps) = @_;
 	@$pids = ();
@@ -241,8 +245,7 @@ sub start_dep_check {
 			my @cpp_argv = map {
 				$_ eq '{i}' ? "$conf_src_dir/$file" : $_
 			} @conf_pp_argv;
-			exec '/bin/sh', '-c', '"$@" 2>/dev/null|grep -Eq "$0"',
-				$grep_pattern, @cpp_argv;
+			exec dep_argv($grep_pattern, @cpp_argv);
 			exit 1;
 		} elsif ($pids->[$i] < 0) {
 			$#$pids = $i - 1;
@@ -254,9 +257,7 @@ sub start_dep_check {
 		my @cpp_argv = map {
 			$_ eq '{i}' ? "$conf_src_dir/$file" : $_
 		} @conf_pp_argv;
-		my $exit = system '/bin/sh', '-c',
-			'"$@" 2>/dev/null|grep -Eq "$0"',
-			$grep_pattern, @cpp_argv;
+		my $exit = system dep_argv($grep_pattern, @cpp_argv);
 		splice @$files, $j, 1 if ($exit != 0);
 	}
 }
