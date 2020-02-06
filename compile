@@ -32,6 +32,7 @@ my $conf_target = 'a.out';
 my $conf_build_dir = 'build';
 my $conf_src_dir = 'src';
 my $conf_cc = 'cc';
+my $conf_parallel = 1;
 my @conf_flags = ();
 my @conf_libs = ();
 my @conf_comp_argv = ();
@@ -49,6 +50,10 @@ sub main {
 			$conf_src_dir = $arg;
 		} elsif (arg_opt('-c', \$arg)) {
 			$conf_cc = $arg;
+		} elsif (arg_opt('-j', \$arg)) {
+			fatal("$0: -j takes a positive integer argument")
+				unless ($arg =~ /^[0-9]+$/ && +$arg > 0);
+			$conf_parallel = +$arg;
 		} elsif (args_opt('-F', \@args)) {
 			@conf_flags = @args;
 		} elsif (args_opt('-L', \@args)) {
@@ -71,6 +76,7 @@ Options:
                   default is 'build'.
   -s <dir>        Look for sources in the directory <dir>. The default is 'src'.
   -c <cc>         Use the compiler <cc>. The default is 'cc'.
+  -j <number>     Compile <number> files in parallel. The default is 1.
   -F <arg>... --  Pass <arg>... as flags to all invocations of the compiler. The
                   default is nothing.
   -L <arg>... --  Pass linking options <arg>... after source files when linking.
@@ -131,15 +137,11 @@ EOT
 	}
 	my @pids = ();
 	start_dep_check(\@check_deps, \@pids, @changed_includes);
-	for my $source (@rebuilds) {
-		compile($source) and fatal("Compilation failed");
-	}
+	compile_sources(@rebuilds);
 	wait_dep_check(\@check_deps, \@pids);
 	if (scalar @rebuilds > 0 || scalar @check_deps > 0
 	 || !-e $conf_target || mtime($conf_src_dir) > mtime($conf_target)) {
-		for my $source (@check_deps) {
-			compile($source) and fatal("Compilation failed");
-		}
+		compile_sources(@check_deps);
 		link_target(map { "$_.o" } @sources)
 			and fatal("Compilation failed");
 		system "touch", $timestamp;
@@ -264,13 +266,33 @@ sub wait_dep_check {
 	}
 }
 
-sub compile {
-	my ($file) = @_;
-	my @cc_argv = map {
-		$_ eq '{i}' ? "$conf_src_dir/$file" :
-		$_ eq '{o}' ? "$conf_build_dir/$file.o" : $_ } @conf_comp_argv;
-	print((join ' ', @cc_argv), "\n");
-	return system @cc_argv;
+sub compile_sources {
+	my @sources = @_;
+	for (my $i = 0; $i <= $#sources; $i += $conf_parallel) {
+		my @pids = ();
+		for (my $p = 0; $p < $conf_parallel; ++$p) {
+			my $f = $i + $p;
+			last if ($f > $#sources);
+			$pids[$p] = fork();
+			if ($pids[$p] == 0) {
+				my $file = $sources[$f];
+				my $in = "$conf_src_dir/$file";
+				my $out = "$conf_build_dir/$file.o";
+				my @cc_argv = map {
+					$_ eq '{i}' ? $in :
+					$_ eq '{o}' ? $out : $_
+				} @conf_comp_argv;
+				print((join ' ', @cc_argv), "\n");
+				exec @cc_argv;
+			} elsif ($pids[$p] < 0) {
+				fatal("Out of processes");
+			}
+		}
+		for (my $p = 0; $p <= $#pids; ++$p) {
+			waitpid $pids[$p], 0;
+			fatal("Compilation failed") if ($? != 0);
+		}
+	}
 }
 
 sub link_target {
