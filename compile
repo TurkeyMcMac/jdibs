@@ -1,0 +1,167 @@
+#!/usr/bin/perl
+
+my $conf_target = 'a.out';
+my $conf_build_dir = 'build';
+my $conf_src_dir = 'src';
+my $conf_cc = 'cc';
+my @conf_flags = ();
+my @conf_libs = ();
+my @conf_comp_argv = ($conf_cc, @conf_flags, '-c', '-o', '{o}', '{i}');
+my @conf_link_argv = ($conf_cc, @conf_flags, '-o', '{o}', '{i}', @conf_libs);
+my @conf_pp_argv = ($conf_cc, @conf_flags, '-E', '{i}');
+
+sub main {
+	my @rebuilds = ();
+	opendir(my $src_dir, $conf_src_dir)
+		or fatal("Unable to open source directory $conf_src_dir; $!\n");
+	my @sources = ();
+	my @changed_includes = ();
+	my $timestamp = "$conf_build_dir/.timestamp";
+	my $rebuild_inc_after = mtime($timestamp);
+	for my $file (readdir $src_dir) {
+		next if (-d $file);
+		if ($file =~ /\.(?:c|cc|cpp|cxx|C|CPP|m)$/) {
+			push @sources, $file;
+		} elsif (mtime("$conf_src_dir/$file") > $rebuild_inc_after) {
+			push @changed_includes, $file;
+		}
+	}
+	closedir $src_dir;
+	system "mkdir", "-p", $conf_build_dir
+		and fatal("Unable to make directory $conf_build_dir\n");
+	for my $source (@sources) {
+		my $object = "$source.o";
+		my $source_path = "$conf_src_dir/$source";
+		my $object_path = "$conf_build_dir/$object";
+		if (!-e $object_path
+		 || mtime($source_path) > mtime($object_path)) {
+			push @rebuilds, $source;
+		} else {
+			push @check_deps, $source;
+		}
+	}
+	my @pids = ();
+	start_dep_check(\@check_deps, \@pids, @changed_includes);
+	for my $source (@rebuilds) {
+		compile($source) and fatal("Compilation failed.");
+	}
+	wait_dep_check(\@check_deps, \@pids);
+	if (scalar @rebuilds > 0 || scalar @check_deps > 0
+	 || !-e $conf_target || mtime($conf_src_dir) > mtime($conf_target)) {
+		for my $source (@check_deps) {
+			compile($source) and fatal("Compilation failed.");
+		}
+		link_target(map { "$_.o" } @sources)
+			and fatal("Compilation failed.");
+		system "touch", $timestamp;
+		print "Compilation of $conf_target completed.\n";
+	} else {
+		print "$conf_target is already up-to-date.\n";
+	}
+}
+
+sub fatal {
+	say STDERR "@_";
+	exit 1;
+}
+
+sub mtime {
+	my @stat = stat @_;
+	return @stat ? $stat[9] : undef;
+}
+
+sub basename {
+	my ($path) = @_;
+	local ($0, $1);
+	return $path =~ m%^(?:.*/)?([^/]+)/*$% ? $1 : '/';
+}
+
+sub c_escape {
+	# There is no guarantee that the preprocessor will escape strings the
+	# same way; one can only hope.
+	my ($str) = @_;
+	local ($0, $1);
+	$str =~ s/\\/\\\\/g;
+	$str =~ s/"/\\"/g;
+	$str =~ s/\n/\\n/g;
+	$str =~ s/\r/\\r/g;
+	$str =~ s/\t/\\t/g;
+	$str =~ s/\x08/\\b/g;
+	$str =~ s/\f/\\f/g;
+	$str =~ s/\v/\\v/g;
+	$str =~ s/([\x00-\x1F\x7F-\xFF])/sprintf '\\%03o', ord($1)/eg;
+	return $str;
+}
+
+sub grep_escape {
+	my ($str) = @_;
+	local ($0, $1);
+	$str =~ s/([\\.()?*+{}\[\]|^\$])/\\$1/g;
+	return $str;
+}
+
+sub start_dep_check {
+	my ($files, $pids, @deps) = @_;
+	@$pids = ();
+	if (scalar @$files == 0 || scalar @deps == 0) {
+		@$files = ();
+		return;
+	}
+	my $grep_pattern = '^\s*#\s+1\s+"(.*/)?(' . (join '|', map {
+		grep_escape(c_escape($_))
+	} @deps) . ')"[^3]*$';
+	my $i;
+	for ($i = 0; $i <= $#$files; ++$i) {
+		$pids->[$i] = fork();
+		if ($pids->[$i] == 0) {
+			my $file = $files->[$i];
+			my @cpp_argv = map {
+				$_ eq '{i}' ? "$conf_src_dir/$file" : $_
+			} @conf_pp_argv;
+			exec '/bin/sh', '-c', '"$@" 2>/dev/null|grep -Eq "$0"',
+				$grep_pattern, @cpp_argv;
+			exit 1;
+		} elsif ($pids->[$i] < 0) {
+			$#$pids = $i - 1;
+			last;
+		}
+	}
+	for (my $j = $#$files; $j >= $i; --$j) {
+		my $file = $files->[$j];
+		my @cpp_argv = map {
+			$_ eq '{i}' ? "$conf_src_dir/$file" : $_
+		} @conf_pp_argv;
+		my $exit = system '/bin/sh', '-c',
+			'"$@" 2>/dev/null|grep -Eq "$0"',
+			$grep_pattern, @cpp_argv;
+		splice @$files, $j, 1 if ($exit != 0);
+	}
+}
+
+sub wait_dep_check {
+	my ($files, $pids) = @_;
+	for ($j = $#$pids; $j >= 0; --$j) {
+		waitpid $pids->[$j], 0;
+		splice @$files, $j, 1 if ($? != 0);
+	}
+}
+
+sub compile {
+	my ($file) = @_;
+	my @cc_argv = map {
+		$_ eq '{i}' ? "$conf_src_dir/$file" :
+		$_ eq '{o}' ? "$conf_build_dir/$file.o" : $_ } @conf_comp_argv;
+	print((join ' ', @cc_argv), "\n");
+	return system @cc_argv;
+}
+
+sub link_target {
+	my @object_files = map { "$conf_build_dir/$_" } @_;
+	my @cc_argv = map {
+		$_ eq '{i}' ? @object_files : $_ eq '{o}' ? $conf_target : $_
+	} @conf_link_argv;
+	print((join ' ', @cc_argv), "\n");
+	return system @cc_argv;
+}
+
+main()
