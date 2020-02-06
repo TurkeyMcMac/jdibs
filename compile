@@ -113,6 +113,7 @@ EOT
 	my @changed_includes = ();
 	my $timestamp = "$conf_build_dir/.timestamp";
 	my $rebuild_inc_after = mtime($timestamp);
+	$rebuild_inc_after = 0 if (!defined($rebuild_inc_after));
 	for my $file (readdir $src_dir) {
 		next if (-d $file);
 		if ($file =~ /\.(?:c|cc|cpp|cxx|C|CPP|m)$/) {
