@@ -190,7 +190,7 @@ sub args_opt {
 }
 
 sub mtime {
-	my @stat = stat @_;
+	my @stat = stat shift;
 	return @stat ? $stat[9] : undef;
 }
 
