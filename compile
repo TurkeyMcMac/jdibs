@@ -6,11 +6,71 @@ my $conf_src_dir = 'src';
 my $conf_cc = 'cc';
 my @conf_flags = ();
 my @conf_libs = ();
-my @conf_comp_argv = ($conf_cc, @conf_flags, '-c', '-o', '{o}', '{i}');
-my @conf_link_argv = ($conf_cc, @conf_flags, '-o', '{o}', '{i}', @conf_libs);
-my @conf_pp_argv = ($conf_cc, @conf_flags, '-E', '{i}');
+my @conf_comp_argv = ();
+my @conf_link_argv = ();
+my @conf_pp_argv = ();
 
 sub main {
+	while (scalar @ARGV) {
+		my ($arg, @args);
+		if (arg_opt('-t', \$arg)) {
+			$conf_target = $arg;
+		} elsif (arg_opt('-b', \$arg)) {
+			$conf_build_dir = $arg;
+		} elsif (arg_opt('-s', \$arg)) {
+			$conf_src_dir = $arg;
+		} elsif (arg_opt('-c', \$arg)) {
+			$conf_cc = $arg;
+		} elsif (args_opt('-F', \@args)) {
+			@conf_flags = @args;
+		} elsif (args_opt('-L', \@args)) {
+			@conf_libs = @args;
+		} elsif (args_opt('-C', \@args)) {
+			@conf_comp_argv = @args;
+		} elsif (args_opt('-J', \@args)) {
+			@conf_link_argv = @args;
+		} elsif (args_opt('-P', \@args)) {
+			@conf_pp_argv = @args;
+		} else {
+			my $opt = shift @ARGV;
+			if ($opt eq '-h' || $opt eq '-?' || $opt eq '--help') {
+				print <<EOT;
+Usage: $0 [options]
+Compile dependencies.
+Options:
+  -t <target>     Build the executable <target>. Default is 'a.out'.
+  -b <dir>        Use the directory <dir> to store build information. The
+                  default is 'build'.
+  -s <dir>        Look for sources in the directory <dir>. The default is 'src'.
+  -c <cc>         Use the compiler <cc>. The default is 'cc'.
+  -F <arg>... --  Pass <arg>... as flags to all invocations of the compiler. The
+                  default is nothing.
+  -L <arg>... --  Pass linking options <arg>... after source files when linking.
+                  The default is nothing.
+  -C <arg>... --  Use <arg>... as the entire argv of compilation processes. The
+                  string '{i}' is replaced with the source input and '{o}'
+                  becomes the output. The default is '<cc> <flags> -c -o {o}
+                  {i}'.
+  -J <arg>... --  Specify argv when linking. '{i}' is replaced by all inputs and
+                  '{o}' is the output. The default is '<cc> <flags> -o {o} {i}
+                  <linking-options>'.
+  -P <arg>... --  Give the argv when preprocessing. '{i}' becomes the input. The
+                  default is '<cc> <flags> -E {i}'.
+  -h              Display this help.
+EOT
+				exit 0;
+			} else {
+				say STDERR "$0: Invalid option $opt; try $0 -h";
+				exit 1;
+			}
+		}
+	}
+	@conf_comp_argv = ($conf_cc, @conf_flags, '-c', '-o', '{o}', '{i}')
+		unless (@conf_comp_argv);
+	@conf_link_argv = ($conf_cc, @conf_flags, '-o', '{o}', '{i}',
+		@conf_libs) unless (@conf_link_argv);
+	@conf_pp_argv = ($conf_cc, @conf_flags, '-E', '{i}')
+		unless (@conf_pp_argv);
 	my @rebuilds = ();
 	opendir(my $src_dir, $conf_src_dir)
 		or fatal("Unable to open source directory $conf_src_dir; $!\n");
@@ -63,6 +123,35 @@ sub main {
 sub fatal {
 	say STDERR "@_";
 	exit 1;
+}
+
+sub arg_opt {
+	my ($name, $argp) = @_;
+	my $opt = shift @ARGV;
+	if ($opt eq $name) {
+		fatal("$0: Option $name needs an argument") if ($#ARGV < 0);
+		$$argp = shift @ARGV;
+		return 1;
+	} else {
+		unshift @ARGV, $opt;
+		return 0;
+	}
+}
+
+sub args_opt {
+	my ($name, $argsp) = @_;
+	my $opt = shift @ARGV;
+	if ($opt eq $name) {
+		while (scalar @ARGV) {
+			my $next = shift @ARGV;
+			last if ($next eq '--');
+			push @$argsp, $next;
+		}
+		return 1;
+	} else {
+		unshift @ARGV, $opt;
+		return 0;
+	}
 }
 
 sub mtime {
