@@ -163,11 +163,13 @@ sub arg_opt {
 	if ($opt eq $name) {
 		fatal("$0: Option $name needs an argument") if ($#ARGV < 0);
 		$$argp = shift @ARGV;
-		return 1;
+	} elsif (index($opt, $name) == 0) {
+		$$argp = substr($opt, length $name);
 	} else {
 		unshift @ARGV, $opt;
 		return 0;
 	}
+	return 1;
 }
 
 sub args_opt {
