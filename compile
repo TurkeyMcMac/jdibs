@@ -144,9 +144,9 @@ EOT
 	if (scalar @rebuilds > 0 || scalar @check_deps > 0
 	 || !-e $conf_target || mtime($conf_src_dir) > mtime($conf_target)) {
 		compile_sources(@check_deps);
+		system "touch", $timestamp;
 		link_target(map { "$_.o" } @sources)
 			and fatal("Compilation failed");
-		system "touch", $timestamp;
 		print "Compilation of $conf_target completed.\n";
 	} else {
 		print "$conf_target is already up-to-date.\n";
