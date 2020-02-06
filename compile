@@ -102,7 +102,7 @@ EOT
 	my @rebuilds = ();
 	my @check_deps = ();
 	opendir(my $src_dir, $conf_src_dir)
-		or fatal("Unable to open source directory $conf_src_dir; $!\n");
+		or fatal("Unable to open source directory $conf_src_dir; $!");
 	my @sources = ();
 	my @changed_includes = ();
 	my $timestamp = "$conf_build_dir/.timestamp";
@@ -117,7 +117,7 @@ EOT
 	}
 	closedir $src_dir;
 	system "mkdir", "-p", $conf_build_dir
-		and fatal("Unable to make directory $conf_build_dir\n");
+		and fatal("Unable to make directory $conf_build_dir");
 	for my $source (@sources) {
 		my $object = "$source.o";
 		my $source_path = "$conf_src_dir/$source";
@@ -132,16 +132,16 @@ EOT
 	my @pids = ();
 	start_dep_check(\@check_deps, \@pids, @changed_includes);
 	for my $source (@rebuilds) {
-		compile($source) and fatal("Compilation failed.");
+		compile($source) and fatal("Compilation failed");
 	}
 	wait_dep_check(\@check_deps, \@pids);
 	if (scalar @rebuilds > 0 || scalar @check_deps > 0
 	 || !-e $conf_target || mtime($conf_src_dir) > mtime($conf_target)) {
 		for my $source (@check_deps) {
-			compile($source) and fatal("Compilation failed.");
+			compile($source) and fatal("Compilation failed");
 		}
 		link_target(map { "$_.o" } @sources)
-			and fatal("Compilation failed.");
+			and fatal("Compilation failed");
 		system "touch", $timestamp;
 		print "Compilation of $conf_target completed.\n";
 	} else {
