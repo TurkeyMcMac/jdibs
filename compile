@@ -155,6 +155,8 @@ EOT
 
 sub fatal {
 	say STDERR "@_";
+	$SIG{TERM} = sub { };
+	kill 'SIGTERM', 0; # Kill compilation processes
 	exit 1;
 }
 
