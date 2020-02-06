@@ -139,7 +139,7 @@ EOT
 	my @pids = ();
 	start_dep_check(\@check_deps, \@pids, @changed_includes);
 	compile_sources(@rebuilds);
-	wait_dep_check(\@check_deps, \@pids);
+	wait_dep_check(\@check_deps, \@pids, @changed_includes);
 	if (scalar @rebuilds > 0 || scalar @check_deps > 0
 	 || !-e $conf_target || mtime($conf_src_dir) > mtime($conf_target)) {
 		compile_sources(@check_deps);
@@ -237,8 +237,7 @@ sub start_dep_check {
 	my $grep_pattern = '^\s*#\s+1\s+"(.*/)?(' . (join '|', map {
 		grep_escape(c_escape($_))
 	} @deps) . ')"[^3]*$';
-	my $i;
-	for ($i = 0; $i <= $#$files; ++$i) {
+	for (my $i = 0; $i <= $#$files; ++$i) {
 		$pids->[$i] = fork();
 		if ($pids->[$i] == 0) {
 			my $file = $files->[$i];
@@ -252,21 +251,28 @@ sub start_dep_check {
 			last;
 		}
 	}
-	for (my $j = $#$files; $j >= $i; --$j) {
+}
+
+sub wait_dep_check {
+	my ($files, $pids, @deps) = @_;
+	for (my $j = $#$pids; $j >= 0; --$j) {
+		waitpid $pids->[$j], 0;
+		splice @$files, $j, 1 if ($? != 0);
+	}
+	if (scalar @$files == 0 || scalar @deps == 0) {
+		@$files = ();
+		return;
+	}
+	my $grep_pattern = '^\s*#\s+1\s+"(.*/)?(' . (join '|', map {
+		grep_escape(c_escape($_))
+	} @deps) . ')"[^3]*$';
+	for (my $j = $#$files; $j >= 0; --$j) {
 		my $file = $files->[$j];
 		my @cpp_argv = map {
 			$_ eq '{i}' ? "$conf_src_dir/$file" : $_
 		} @conf_pp_argv;
 		my $exit = system dep_argv($grep_pattern, @cpp_argv);
 		splice @$files, $j, 1 if ($exit != 0);
-	}
-}
-
-sub wait_dep_check {
-	my ($files, $pids) = @_;
-	for (my $j = $#$pids; $j >= 0; --$j) {
-		waitpid $pids->[$j], 0;
-		splice @$files, $j, 1 if ($? != 0);
 	}
 }
 
