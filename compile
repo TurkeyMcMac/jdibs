@@ -248,6 +248,9 @@ sub start_dep_check {
 	for (my $i = 0; $i <= $#$files; ++$i) {
 		$pids->[$i] = fork();
 		if ($pids->[$i] == 0) {
+			# New process group to keep compile_sources() from
+			# waiting for this:
+			setpgrp();
 			exec dep_argv($grep_pattern, $files->[$i]);
 			exit 1;
 		} elsif ($pids->[$i] < 0) {
@@ -276,30 +279,35 @@ sub wait_dep_check {
 
 sub compile_sources {
 	my @sources = @_;
-	for (my $i = 0; $i <= $#sources; $i += $conf_parallel) {
-		my @pids = ();
-		for (my $p = 0; $p < $conf_parallel; ++$p) {
-			my $f = $i + $p;
-			last if ($f > $#sources);
-			$pids[$p] = fork();
-			if ($pids[$p] == 0) {
-				my $file = $sources[$f];
-				my $in = "$conf_src_dir/$file";
-				my $out = "$conf_build_dir/$file.o";
-				my @cc_argv = map {
-					$_ eq '{i}' ? $in :
-					$_ eq '{o}' ? $out : $_
-				} @conf_comp_argv;
-				print((join ' ', @cc_argv), "\n");
-				exec @cc_argv;
-			} elsif ($pids[$p] < 0) {
-				fatal("Out of processes");
-			}
-		}
-		for (my $p = 0; $p <= $#pids; ++$p) {
-			waitpid $pids[$p], 0;
+	# Ignore preprocessor processes that are outside this group:
+	my $pgroup = getpgrp();
+	my $n_procs = 0;
+	my $i = 0;
+	while ($i <= $#sources) {
+		if ($n_procs >= $conf_parallel) {
+			waitpid -$pgroup, 0;
+			--$n_procs;
 			fatal("Compilation failed") if ($? != 0);
 		}
+		my $pid = fork();
+		if ($pid == 0) {
+			my $file = $sources[$i];
+			my @cc_argv = map {
+				$_ eq '{i}' ? "$conf_src_dir/$file" :
+				$_ eq '{o}' ? "$conf_build_dir/$file.o" : $_
+			} @conf_comp_argv;
+			print((join ' ', @cc_argv), "\n");
+			exec @cc_argv;
+		} elsif ($pid < 0) {
+			fatal("Out of processes");
+		}
+		++$n_procs;
+		++$i;
+	}
+	while ($n_procs > 0) {
+		waitpid -$pgroup, 0;
+		fatal("Compilation failed") if ($? != 0);
+		--$n_procs;
 	}
 }
 
