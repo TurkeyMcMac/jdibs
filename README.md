@@ -23,10 +23,7 @@ The build system requires some things of the project structure:
 
 ## Disadvantages
 
-This build system is by no means perfect:
-
- * Header dependencies are not cached, and scanning for them can take a bit.
-   However, compilation units that have changed do not need to be scanned for
-   dependencies. They can be compiled in parallel with the dependency scan.
- * If files are being auto-generated, integrating the build system with a
-   Makefile is not completely intuitive.
+This build system is by no means perfect. Header dependencies are not cached,
+and scanning for them can take a bit. However, compilation units that have
+changed do not need to be scanned for dependencies. They can be compiled in
+parallel with the dependency scan.
