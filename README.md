@@ -6,6 +6,12 @@ e.g. 'debug' and 'release'. I have written it so that no external dependencies
 other than Perl are required; just put the file `compile` into your project
 root. The system unfortunately only works on Unix.
 
+## Usage
+
+You can use `./compile -h` for help. I have used the build system as an example
+with my other project TS3D. The example branch is
+[here](https://github.com/TurkeyMcMac/ts3d/tree/jdibs-example).
+
 ## Assumptions
 
 The build system requires some things of the project structure:
