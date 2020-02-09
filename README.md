@@ -1,10 +1,11 @@
 # Jude's Drop In Build Script
 
-This is a dependency-aware build system for simple C/C++ projects. Unlike a
-Makefile, it naturally allows builds of multiple optimization levels at once,
-e.g. 'debug' and 'release'. I have written it so that no external dependencies
-other than Perl are required; just put the file `compile` into your project
-root. The system unfortunately only works on Unix.
+This is a dependency-aware build system for simple C/C++ projects that
+integrates with Makefiles. Unlike a plain Makefile, it naturally allows builds
+of multiple optimization levels at once, e.g. 'debug' and 'release'. I have
+written it so that no external dependencies other than Perl are required; just
+put the file `compile` into your project root. The system unfortunately only
+works on Unix.
 
 ## Usage
 
