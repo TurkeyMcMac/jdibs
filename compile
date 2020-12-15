@@ -133,6 +133,7 @@ EOT
 		local $/;
 		if ($current_argv_data ne <$argv_file>) {
 			$rebuild_all = 1;
+			truncate $argv_file, 0;
 			seek $argv_file, 0, 0;
 			print $argv_file $current_argv_data;
 		}
@@ -169,12 +170,11 @@ EOT
 	}
 	my @pids = ();
 	start_dep_check(\@check_deps, \@pids, @changed_includes);
-	compile_sources(@rebuilds);
+	compile_sources($timestamp, @rebuilds);
 	wait_dep_check(\@check_deps, \@pids, @changed_includes);
 	if (scalar @rebuilds > 0 || scalar @check_deps > 0 || !-e $conf_target)
 	{
-		compile_sources(@check_deps);
-		system "touch", $timestamp;
+		compile_sources($timestamp, @check_deps);
 		link_target(map { "$_.o" } @sources)
 			and fatal("Compilation failed");
 		print "Compilation of $conf_target completed.\n";
@@ -379,8 +379,15 @@ sub invalidate_dep_cache {
 	system "rm", "-f", map { nodep_path($_) } @_ if (scalar @_ > 0);
 }
 
+sub register_compiler_finish {
+	my $status = $?;
+	my ($timestamp) = @_;
+	system "touch", $timestamp;
+	fatal("Compilation failed") if ($status != 0);
+}
+
 sub compile_sources {
-	my @sources = @_;
+	my ($timestamp, @sources) = @_;
 	invalidate_dep_cache(@sources);
 	# Ignore preprocessor processes that are outside this group:
 	my $pgroup = getpgrp();
@@ -390,7 +397,7 @@ sub compile_sources {
 		if ($n_procs >= $conf_parallel) {
 			waitpid -$pgroup, 0;
 			--$n_procs;
-			fatal("Compilation failed") if ($? != 0);
+			register_compiler_finish($timestamp);
 		}
 		my $pid = fork();
 		if ($pid == 0) {
@@ -410,8 +417,8 @@ sub compile_sources {
 	}
 	while ($n_procs > 0) {
 		waitpid -$pgroup, 0;
-		fatal("Compilation failed") if ($? != 0);
 		--$n_procs;
+		register_compiler_finish($timestamp);
 	}
 }
 
