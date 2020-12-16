@@ -1,5 +1,9 @@
 # Jude's Drop In Build Script
 
+**Before using this, see if
+[build-objects](https://github.com/TurkeyMcMac/build-objects) would work**. It
+is the successor to this project, and I consider it to be better.
+
 This is a dependency-aware build system for simple C/C++ projects that
 integrates with Makefiles. Unlike a plain Makefile, it naturally allows builds
 of multiple optimization levels at once, e.g. 'debug' and 'release'. I have
